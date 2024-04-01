@@ -19,7 +19,6 @@ include(std.cmake)
 
 add_library(cpplox
   STATIC
-  src/test.cpp
   src/parser.cpp
   src/codegen.cpp
   src/ast.cpp
