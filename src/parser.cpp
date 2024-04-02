@@ -1,3 +1,6 @@
+#include "parser.hpp"
+#include "codegen.hpp"
+#include "ast.hpp"
 #include <cctype>
 #include <cstdio>
 #include <cstdlib>
@@ -6,8 +9,6 @@
 #include <string>
 #include <utility>
 #include <vector>
-#include "ast.hpp"
-#include "parser.hpp"
 
 //===----------------------------------------------------------------------===//
 // Lexer
@@ -323,16 +324,35 @@ static void HandleExtern() {
   }
 }
 
+static ExitOnError ExitOnErr;
+
 static void HandleTopLevelExpression() {
   // Evaluate a top-level expression into an anonymous function.
   if (auto FnAST = ParseTopLevelExpr()) {
     if (auto *FnIR = FnAST->codegen()) {
-      fprintf(stderr, "Read top-level expression:");
-      FnIR->print(llvm::errs());
-      fprintf(stderr, "\n");
+      // Create a ResourceTracker to track JIT'd memory allocated to our
+      // anonymous expression - that way we can free it after executing.
+      auto RT = TheJIT->getMainJITDylib().createResourceTracker();
 
+      auto TSM = ThreadSafeModule(std::move(TheModule), std::move(TheContext));
+      ExitOnErr(TheJIT->addModule(std::move(TSM), RT));
+      InitializeModuleAndManagers();
+
+      // Search the JIT for the __anon_expr symbol.
+      auto ExprSymbol = ExitOnErr(TheJIT->lookup("__anon_expr"));
+      assert(ExprSymbol && "Function not found");
+
+      // Get the symbol's address and cast it to the right type (taking no
+      // arguments, returning a double) so we can call it as a native function.
+      double (*FP)() = ExprSymbol.getAddress().toPtr<double (*)()>();
+      fprintf(stderr, "Evaluated to %f\n", FP());
+      ExitOnErr(RT->remove());
+      // fprintf(stderr, "Read top-level expression:");
+      // FnIR->print(llvm::errs());
+      // fprintf(stderr, "\n");
+      //
       // Remove the anonymous expression.
-      FnIR->eraseFromParent();
+      // FnIR->eraseFromParent();
     }
   } else {
     // Skip token for error recovery.

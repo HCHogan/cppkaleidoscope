@@ -22,6 +22,7 @@ add_library(cpplox
   src/parser.cpp
   src/codegen.cpp
   src/ast.cpp
+  src/KaleidoscopeJIT.cpp
 )
 
 target_include_directories(cpplox

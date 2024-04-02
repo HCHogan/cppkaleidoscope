@@ -1,8 +1,10 @@
 #include <print>
 #include "parser.hpp"
+#include "KaleidoscopeJIT.hpp"
 #include "codegen.hpp"
 
 int main() {
+  LLVMInitializeNativeTarget();
   // Install standard binary operators.
   // 1 is lowest precedence.
   BinopPrecedence['<'] = 10;
@@ -14,8 +16,10 @@ int main() {
   fprintf(stderr, "ready> ");
   getNextToken();
 
+  TheJIT = std::make_unique<KaleidoscopeJIT>();
+
   // initialize codegen
-  InitializeModule();
+  InitializeModuleAndManagers();
 
   // Run the main "interpreter loop" now.
   MainLoop();
