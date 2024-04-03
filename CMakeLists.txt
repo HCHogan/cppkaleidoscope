@@ -23,6 +23,7 @@ add_library(cpplox
   src/codegen.cpp
   src/ast.cpp
   src/KaleidoscopeJIT.cpp
+  src/libraryfunctions.cpp
 )
 
 target_include_directories(cpplox
@@ -34,7 +35,7 @@ add_executable(cpplox-repl
   apps/repl.cpp
 )
 
-llvm_map_components_to_libnames(llvm_libs support core irreader)
+llvm_map_components_to_libnames(llvm_libs passes support core nativecodegen OrcJIT native)
 
 target_link_libraries(cpplox PUBLIC ${llvm_libs})
 target_link_libraries(cpplox-repl PUBLIC cpplox)

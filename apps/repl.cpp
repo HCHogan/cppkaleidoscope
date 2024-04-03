@@ -5,6 +5,9 @@
 
 int main() {
   LLVMInitializeNativeTarget();
+  LLVMInitializeNativeAsmPrinter();
+  LLVMInitializeNativeAsmParser();
+
   // Install standard binary operators.
   // 1 is lowest precedence.
   BinopPrecedence['<'] = 10;
@@ -16,7 +19,7 @@ int main() {
   fprintf(stderr, "ready> ");
   getNextToken();
 
-  TheJIT = std::make_unique<KaleidoscopeJIT>();
+  TheJIT = ExitOnErr(KaleidoscopeJIT::Create());
 
   // initialize codegen
   InitializeModuleAndManagers();

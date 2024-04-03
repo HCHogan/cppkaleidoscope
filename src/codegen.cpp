@@ -1,5 +1,6 @@
-#include "ast.hpp"
+#include "codegen.hpp"
 #include "KaleidoscopeJIT.hpp"
+#include "ast.hpp"
 
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/STLExtras.h"
@@ -58,10 +59,15 @@ std::unique_ptr<ModuleAnalysisManager> TheMAM;
 std::unique_ptr<PassInstrumentationCallbacks> ThePIC;
 std::unique_ptr<StandardInstrumentations> TheSI;
 
+// The JIT will happily resolve function calls across module boundaries, as long
+// as each of the functions called has a prototype, and is added to the JIT
+// before it is called. So we only need to store the prototypes for functions
+std::map<std::string, std::unique_ptr<PrototypeAST>> FunctionProtos;
+
 void InitializeModuleAndManagers() {
   // Open a new context and module.
   TheContext = std::make_unique<LLVMContext>();
-  TheModule = std::make_unique<Module>("my cool jit", *TheContext);
+  TheModule = std::make_unique<Module>("hank's cool jit", *TheContext);
   TheModule->setDataLayout(TheJIT->getDataLayout());
 
   // Create a new builder for the module.
@@ -75,7 +81,7 @@ void InitializeModuleAndManagers() {
   TheMAM = std::make_unique<ModuleAnalysisManager>();
   ThePIC = std::make_unique<PassInstrumentationCallbacks>();
   TheSI = std::make_unique<StandardInstrumentations>(*TheContext,
-                                                    /*DebugLogging*/ true);
+                                                     /*DebugLogging*/ true);
   TheSI->registerCallbacks(*ThePIC, TheMAM.get());
 
   // Add transform passes.
@@ -135,7 +141,7 @@ Value *BinaryExprAST::codegen() {
 /// to also call into standard library functions like “sin” and “cos”, with no
 /// additional effort.
 Value *CallExprAST::codegen() {
-  Function *CalleeF = TheModule->getFunction(Callee);
+  Function *CalleeF = getFunction(Callee);
   if (!CalleeF)
     return LogErrorV("Unknown function referenced");
   if (CalleeF->arg_size() != Args.size())
@@ -174,10 +180,10 @@ Function *PrototypeAST::codegen() {
 }
 
 Function *FunctionAST::codegen() {
-  // first, check for an existing function from a previous 'extern' declaration
-  Function *TheFunction = TheModule->getFunction(Proto->getName());
-  if (!TheFunction)
-    TheFunction = Proto->codegen();
+  auto &P = *Proto;
+  FunctionProtos[Proto->getName()] = std::move(Proto);
+  Function *TheFunction = getFunction(P.getName());
+
   if (!TheFunction)
     return nullptr; // if there was an error creating the function, return
                     // nullptr (why?)
@@ -207,5 +213,20 @@ Function *FunctionAST::codegen() {
 
   // Error reading body, remove function.
   TheFunction->eraseFromParent();
+  return nullptr;
+}
+
+Function *getFunction(std::string Name) {
+  // First, see if the function has already been added to the current module.
+  if (auto *F = TheModule->getFunction(Name))
+    return F;
+
+  // If not, check whether we can codegen the declaration from some existing
+  // prototype.
+  auto FI = FunctionProtos.find(Name);
+  if (FI != FunctionProtos.end())
+    return FI->second->codegen();
+
+  // If no existing prototype exists, return null.
   return nullptr;
 }

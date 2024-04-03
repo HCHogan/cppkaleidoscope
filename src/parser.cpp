@@ -1,6 +1,6 @@
 #include "parser.hpp"
-#include "codegen.hpp"
 #include "ast.hpp"
+#include "codegen.hpp"
 #include <cctype>
 #include <cstdio>
 #include <cstdlib>
@@ -304,6 +304,10 @@ static void HandleDefinition() {
       fprintf(stderr, "Read function definition:");
       FnIR->print(llvm::errs());
       fprintf(stderr, "\n");
+      // Add the function to the JIT, never remove it.
+      ExitOnErr(TheJIT->addModule(
+          ThreadSafeModule(std::move(TheModule), std::move(TheContext))));
+      InitializeModuleAndManagers();
     }
   } else {
     // Skip token for error recovery.
@@ -317,6 +321,8 @@ static void HandleExtern() {
       fprintf(stderr, "Read extern: ");
       FnIR->print(llvm::errs());
       fprintf(stderr, "\n");
+      // Add the prototype to the JIT.
+      FunctionProtos[ProtoAST->getName()] = std::move(ProtoAST);
     }
   } else {
     // Skip token for error recovery.
@@ -324,32 +330,41 @@ static void HandleExtern() {
   }
 }
 
-static ExitOnError ExitOnErr;
+ExitOnError ExitOnErr;
 
 static void HandleTopLevelExpression() {
   // Evaluate a top-level expression into an anonymous function.
   if (auto FnAST = ParseTopLevelExpr()) {
     if (auto *FnIR = FnAST->codegen()) {
+      fprintf(stderr, "Read top-level expression:");
+      FnIR->print(llvm::errs());
+      fprintf(stderr, "\n");
+
       // Create a ResourceTracker to track JIT'd memory allocated to our
       // anonymous expression - that way we can free it after executing.
       auto RT = TheJIT->getMainJITDylib().createResourceTracker();
 
       auto TSM = ThreadSafeModule(std::move(TheModule), std::move(TheContext));
+      // calling addModule, which triggers code generation for all the functions
+      // in the module, and accepts a ResourceTracker which can be used to
+      // remove the module from the JIT later.
       ExitOnErr(TheJIT->addModule(std::move(TSM), RT));
+      // we also open a new module to hold subsequent code
       InitializeModuleAndManagers();
 
       // Search the JIT for the __anon_expr symbol.
       auto ExprSymbol = ExitOnErr(TheJIT->lookup("__anon_expr"));
-      assert(ExprSymbol && "Function not found");
+      // assert(ExprSymbol && "Function not found");
 
       // Get the symbol's address and cast it to the right type (taking no
       // arguments, returning a double) so we can call it as a native function.
       double (*FP)() = ExprSymbol.getAddress().toPtr<double (*)()>();
       fprintf(stderr, "Evaluated to %f\n", FP());
+
+      // Remove the anonymous expression module from the JIT.
+      // note that function definitions added to the JIT by HandleDefinition is
+      // not removed.
       ExitOnErr(RT->remove());
-      // fprintf(stderr, "Read top-level expression:");
-      // FnIR->print(llvm::errs());
-      // fprintf(stderr, "\n");
       //
       // Remove the anonymous expression.
       // FnIR->eraseFromParent();
