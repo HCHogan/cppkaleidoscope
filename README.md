@@ -32,6 +32,6 @@ The following command will bring you a interactive repl to play with.
 ```bash
 cmake -S . -B build -G Ninja -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_C_COMPILER=clang
 cmake --build build
-./build/cpplox-repl
+./build/cppkaleidoscope-repl
 ```
 
