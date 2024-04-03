@@ -157,6 +157,62 @@ Value *CallExprAST::codegen() {
   return Builder->CreateCall(CalleeF, ArgsV, "calltmp");
 }
 
+// All basic blocks should be terminated with a control flow instruction.
+Value *IfExprAST::codegen() {
+  Value *CondV = Cond->codegen();
+  if (!CondV)
+    return nullptr;
+
+  CondV = Builder->CreateFCmpONE(
+      CondV, ConstantFP::get(*TheContext, APFloat(0.0)), "ifcond");
+  // get the parent of current working block(the current function)
+  Function *TheFunction = Builder->GetInsertBlock()->getParent();
+
+  // Create block for then and else
+  // Note that it passes “TheFunction” into the constructor for the “then”
+  // block. This causes the constructor to automatically insert the new block
+  // into the end of the specified function. The other two blocks are created,
+  // but aren’t yet inserted into the function.
+  BasicBlock *ThenBB = BasicBlock::Create(*TheContext, "then", TheFunction);
+  BasicBlock *ElseBB = BasicBlock::Create(*TheContext, "else");
+  BasicBlock *MergeBB = BasicBlock::Create(*TheContext, "ifcont");
+
+  Builder->CreateCondBr(CondV, ThenBB, ElseBB);
+
+  // Emit then value.
+  Builder->SetInsertPoint(ThenBB);
+
+  Value *ThenV = Then->codegen();
+  if (!ThenV)
+    return nullptr;
+
+  // To finish off the “then” block, we create an unconditional branch to the
+  // merge block.
+  Builder->CreateBr(MergeBB);
+  // Codegen of 'Then' can change the notion of 'current block', update ThenBB
+  // for the PHI.
+  ThenBB = Builder->GetInsertBlock();
+  TheFunction->insert(TheFunction->end(), ElseBB);
+  Builder->SetInsertPoint(ElseBB);
+  Value *ElseV = Else->codegen();
+  if (!ElseV)
+    return nullptr;
+  Builder->CreateBr(MergeBB);
+  // Codegen of 'Else' can change the current block, same.
+  ElseBB = Builder->GetInsertBlock();
+
+  // Emit the Merge block
+  TheFunction->insert(TheFunction->end(), MergeBB);
+  Builder->SetInsertPoint(MergeBB);
+  PHINode *PN = Builder->CreatePHI(Type::getDoubleTy(*TheContext), 2, "iftmp");
+
+  PN->addIncoming(ThenV, ThenBB);
+  PN->addIncoming(ElseV, ElseBB);
+  // Finally, the CodeGen function returns the phi node as the value computed by
+  // the if/then/else expression.
+  return PN;
+}
+
 /// This code packs a lot of power into a few lines. Note first that this
 /// function returns a “Function*” instead of a “Value*”. Because a “prototype”
 /// really talks about the external interface for a function (not the value
