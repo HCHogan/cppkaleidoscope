@@ -37,6 +37,12 @@ add_executable(cppkaleidoscope-repl
   apps/repl.cpp
 )
 
+add_executable(kc
+  apps/kc.cpp
+)
+
 
 target_link_libraries(cppkaleidoscope PUBLIC ${llvm_libs})
+
 target_link_libraries(cppkaleidoscope-repl PUBLIC cppkaleidoscope)
+target_link_libraries(kc PUBLIC cppkaleidoscope)

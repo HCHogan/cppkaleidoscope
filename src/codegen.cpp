@@ -286,3 +286,69 @@ Function *getFunction(std::string Name) {
   // If no existing prototype exists, return null.
   return nullptr;
 }
+
+Value *ForExprAST::codegen() {
+  // Emit the start code first
+  Value *StartVal = Start->codegen();
+  if (!StartVal) {
+    return nullptr;
+  }
+  Function *TheFunction = Builder->GetInsertBlock()->getParent();
+  BasicBlock *PreheaderBB = Builder->GetInsertBlock();
+  // Create the loop basic block and insert into the end of the function
+  BasicBlock *LoopBB = BasicBlock::Create(*TheContext, "loop", TheFunction);
+
+  // Insert an explicit fall through from the current block to the LoopBB.
+  Builder->CreateBr(LoopBB);
+  // Start insertion in LoopBB
+  // create the phi
+  PHINode *Variable =
+      Builder->CreatePHI(Type::getDoubleTy(*TheContext), 2, VarName);
+  // add first coming/value pair
+  Variable->addIncoming(StartVal, PreheaderBB);
+  // Within the loop, the variable is defined equal to the PHI node. If it
+  // shadows an existing variable, wee have to restore it, so save it now.
+  Value *OldVal = NamedValues[VarName];
+  NamedValues[VarName] = Variable;
+
+  if (!Body->codegen())
+    return nullptr; // can change the current BB
+
+  Value *StepVal = nullptr;
+  if (Step) {
+    StepVal = Step->codegen();
+    if (!Step)
+      return nullptr;
+  } else {
+    // If not specified, use 1.0
+    StepVal = ConstantFP::get(*TheContext, APFloat(1.0));
+  }
+
+  Value *NextVar = Builder->CreateFAdd(Variable, StepVal, "nextvar");
+
+  Value *EndCond = End->codegen();
+  if (!EndCond)
+    return nullptr;
+
+  EndCond = Builder->CreateFCmpONE(
+      EndCond, ConstantFP::get(*TheContext, APFloat(0.0)), "loopcond");
+
+  // remembers the end block (for the phi node)
+  BasicBlock *LoopEndBB = Builder->GetInsertBlock();
+  BasicBlock *AfterBB =
+      BasicBlock::Create(*TheContext, "afterloop", TheFunction);
+
+  // Insert the conditional branch into the end of LoopEndBB.
+  Builder->CreateCondBr(EndCond, LoopBB, AfterBB);
+  Builder->SetInsertPoint(AfterBB);
+
+  Variable->addIncoming(NextVar, LoopEndBB);
+
+  if (OldVal)
+    NamedValues[VarName] = OldVal;
+  else
+    NamedValues.erase(VarName);
+
+  // for-expr always returns 0.0
+  return Constant::getNullValue(Type::getDoubleTy(*TheContext));
+}

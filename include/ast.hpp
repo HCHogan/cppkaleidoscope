@@ -94,6 +94,25 @@ public:
   Value *codegen() override;
 };
 
+/// ForExprAST - Expression class for for/in.
+/// extern putchard(char);
+/// def printstar(n)
+///  for i = 1, i < n, 1.0 in
+///    putchard(42);  # ascii 42 = '*'
+class ForExprAST : public ExprAST {
+  std::string VarName;
+  std::unique_ptr<ExprAST> Start, End, Step, Body;
+
+public:
+  ForExprAST(const std::string &VarName, std::unique_ptr<ExprAST> Start,
+             std::unique_ptr<ExprAST> End, std::unique_ptr<ExprAST> Step,
+             std::unique_ptr<ExprAST> Body)
+    : VarName(VarName), Start(std::move(Start)), End(std::move(End)),
+      Step(std::move(Step)), Body(std::move(Body)) {}
+
+  Value *codegen() override;
+};
+
 std::unique_ptr<ExprAST> LogError(const char *Str);
 
 #endif // AST_HPP
