@@ -2,13 +2,13 @@
 #include "KaleidoscopeJIT.hpp"
 #include "codegen.hpp"
 #include "parser.hpp"
+#include "llvm-c/Target.h"
 #include <print>
 
 int main() {
   auto TargetTriple = LLVMGetDefaultTargetTriple();
-  LLVMInitializeAllTargetInfos();
-  LLVMInitializeAllTargets();
-  LLVMInitializeAllTargetMCs();
-  LLVMInitializeAllAsmParsers();
-  LLVMInitializeAllAsmPrinters();
+  LLVMInitializeNativeTarget();
+  LLVMInitializeNativeAsmParser();
+  LLVMInitializeNativeAsmPrinter();
+  LLVMInitializeNativeDisassembler();
 }
